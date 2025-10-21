@@ -623,6 +623,208 @@ namespace app
         }
         #endregion
 
+        #region インゲームヘルパーメソッド
+        /// <summary>
+        /// ゲーム開始演出処理
+        /// </summary>
+        private void HandleGameStartSequence()
+        {
+            float oldStartTimer = gameStartTimer;
+
+            //ゲーム開始演出のタイマーが０の時、SEを鳴らす
+            if (Math.Truncate(gameStartTimer) == 0 && gameStartTimer % 1.0f == 0)
+            {
+                //準備SE
+                soundPlayer._Sources[(int)InGameSe.Ready].play();
+            }
+
+            //ゲーム開始演出のタイマーを進める
+            if (!gameOver)
+            {
+                gameStartTimer += Application.ElapsedSecond;
+            }
+
+            //経過時間に応じて開始演出を進める
+            if (gameStartTimer < ingameUserData.StartTransitionTime)
+            {
+                if (Math.Truncate(gameStartTimer) == Math.Truncate(ingameUserData.StartGoTime) &&
+                    Math.Truncate(gameStartTimer) != Math.Truncate(oldStartTimer))
+                {
+                    //開始SE
+                    soundPlayer._Sources[(int)InGameSe.Go].play();
+                }
+            }
+            else if (Math.Truncate(gameStartTimer) == Math.Truncate(ingameUserData.StartTransitionTime) &&
+                     Math.Truncate(gameStartTimer) != Math.Truncate(oldStartTimer))
+            {
+                //入力を受け付ける
+                GamePlayerManager_Work.Instance.IsInput = true;
+
+                //ゲーム開始フラグ有効
+                gameStart = true;
+
+                //BGM再生
+                PlayBgm(Bgm.InGame);
+            }
+            else
+            {
+                //開始演出が終了したら、ポーズ可能になる
+                HandlePauseInput();
+            }
+        }
+
+        /// <summary>
+        /// ポーズ入力処理
+        /// </summary>
+        private void HandlePauseInput()
+        {
+            if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.CRight))
+            {
+                if (!pause)
+                {
+                    setPause();
+                }
+                else
+                {
+                    cancelePause();
+                }
+            }
+            //ポーズ画面選択肢
+            if (pause)
+            {
+                PauseSelect();
+            }
+        }
+
+        /// <summary>
+        /// 召喚獣のHP管理とカメラ振動処理
+        /// </summary>
+        private void UpdateMonsterHitPoints()
+        {
+            //召喚獣のヒットポイントを取得
+            int oldEgiHitPoint = egiHitPoint;
+            int oldAarihitPoint = aariHitPoint;
+
+            //召喚獣のヒットポイントを取得
+            egiHitPoint = egi.getComponent<Monster_Work>().HitPoint;
+            aariHitPoint = aari.getComponent<Monster_Work>().HitPoint;
+
+            //召喚獣ダメージ時カメラ振動
+            if (oldEgiHitPoint > egiHitPoint || oldAarihitPoint > aariHitPoint)
+            {
+                CameraManager_Work.Instance.startCameraShack();
+            }
+        }
+
+        /// <summary>
+        /// 勝敗判定（HP基準）
+        /// </summary>
+        private void CheckGameOverByHP()
+        {
+            if (egiHitPoint <= 0 && aariHitPoint > 0)
+            {
+                winner = (int)Team.FrulaAndAari;
+                setGameOver();
+                loseMonster = egi;
+            }
+            else if (aariHitPoint <= 0 && egiHitPoint > 0)
+            {
+                winner = (int)Team.SheenaAndEgi;
+                setGameOver();
+                loseMonster = aari;
+            }
+            else if (egiHitPoint <= 0 && aariHitPoint <= 0)
+            {
+                winner = (int)Team.None;
+                setGameOver();
+                loseMonster = null;
+            }
+        }
+
+        /// <summary>
+        /// 勝敗判定（時間切れ）
+        /// </summary>
+        private void CheckGameOverByTimeout()
+        {
+            if (ingameTimer <= 0.0f && gameOver == false)
+            {
+                //ヒットポイントに応じて勝者判定を行う
+                if (aariHitPoint > egiHitPoint)
+                {
+                    winner = (int)Team.FrulaAndAari;
+                }
+                else if (egiHitPoint > aariHitPoint)
+                {
+                    winner = (int)Team.SheenaAndEgi;
+                }
+                else
+                {
+                    winner = (int)Team.None;
+                }
+
+                setGameOver();
+            }
+        }
+
+        /// <summary>
+        /// 終了演出を開始
+        /// </summary>
+        private void StartFinishDirection()
+        {
+            if (finishDirection == false)
+            {
+                finishDirection = true;
+                soundPlayer._Sources[(int)InGameSe.Finigh].play();
+            }
+        }
+
+        /// <summary>
+        /// ゲームオーバー演出処理
+        /// </summary>
+        private void HandleGameOverSequence()
+        {
+            //時間切れの場合、終了演出
+            if (ingameTimer <= 0.0f)
+            {
+                StartFinishDirection();
+                finishDirectionWaitTimer += Application.ElapsedSecond;
+            }
+
+            gameOverTimer += Application.ElapsedSecond;
+
+            //ゲームオーバー時、カメラ演出を行う　一定時間経過したら終了演出を出す
+            if (gameOverTimer > ingameUserData.GameOverTime)
+            {
+                //終了演出時間加算
+                finishDirectionWaitTimer += Application.ElapsedSecond;
+                StartFinishDirection();
+            }
+            else
+            {
+                //負けた召喚獣にカメラを寄せる
+                if (loseMonster != null)
+                {
+                    vec3 targetPosition = loseMonster.getComponent<Transform>().Position;
+                    targetPosition = targetPosition + ingameCameraUserData.TargetPositionOffset;
+                    CameraManager_Work.Instance.moveCameraLerp(targetPosition, ingameCameraUserData.ZoomInInterpolationCoef);
+                }
+            }
+
+            //終了演出を出し、一定時間経過したらリザルトへ
+            if (finishDirectionWaitTimer > ingameUserData.FinishTransitionTime)
+            {
+                //シーン遷移時間加算
+                resultTransitionTimer += Application.ElapsedSecond;
+
+                if (resultTransitionTimer > ingameUserData.ResultTransitionTime)
+                {
+                    //フェーズを進める
+                    inGamePhase = InGamePhase.GAME_OVER;
+                }
+            }
+        }
+        #endregion
+
         public override void start()
         {
             base.start();
@@ -1484,190 +1686,28 @@ namespace app
                 //インゲーム
                 case InGamePhase.INGAME:
 
-                    float oldStartTimer = gameStartTimer;
+                    //ゲーム開始演出処理
+                    HandleGameStartSequence();
 
-                    //ゲーム開始演出のタイマーが０の時、SEを鳴らす
-                    if (Math.Truncate(gameStartTimer) == 0 && gameStartTimer % 1.0f== 0)
-                    {
-                        //準備SE
-                        soundPlayer._Sources[(int)InGameSe.Ready].play();
-                    }
-
-                    //ゲーム開始演出のタイマーを進める
-                    if (!gameOver)
-                    {
-                        gameStartTimer += Application.ElapsedSecond;
-                    }
-
-                    //経過時間に応じて開始演出を進める
-                    if (gameStartTimer < ingameUserData.StartTransitionTime)
-                    {                           
-                        if (Math.Truncate(gameStartTimer) == Math.Truncate(ingameUserData.StartGoTime) && Math.Truncate(gameStartTimer) != Math.Truncate(oldStartTimer))
-                        {
-                            //開始SE
-                            soundPlayer._Sources[(int)InGameSe.Go].play();
-                        }
-                    }
-                    else if (Math.Truncate(gameStartTimer) == Math.Truncate(ingameUserData.StartTransitionTime) && Math.Truncate(gameStartTimer) != Math.Truncate(oldStartTimer))
-                    {                     
-                        //入力を受け付ける
-                        GamePlayerManager_Work.Instance.IsInput = true;
-
-                        //ゲーム開始フラグ有効
-                        gameStart = true;
-
-                        //BGM再生
-                        PlayBgm(Bgm.InGame);
-                    }
-                    else 
-                    {
-                        //開始演出が終了したら、ポーズ可能になる
-                        //ポーズ
-                        if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.CRight))
-                        {
-                            if (!pause)
-                            {
-                                setPause();
-                            }
-                            else
-                            {
-                                cancelePause();
-                            }
-                        }
-                        //ポーズ画面選択肢
-                        if (pause)
-                        {
-                            PauseSelect();
-                        }
-                    }
-
-                    float oldGameTimer = ingameTimer;
                     //ゲーム時間のカウントダウン
-                    if (pause == false && gameOver == false　&& gameStart)
+                    if (pause == false && gameOver == false && gameStart)
                     {
                         ingameTimer -= Application.ElapsedSecond;
                     }
 
-                    //召喚獣のヒットポイントを取得
-                    int oldEgiHitPoint = egiHitPoint;
-                    int oldAarihitPoint = aariHitPoint;
-
-                    //召喚獣のヒットポイントを取得
-                    egiHitPoint = egi.getComponent<Monster_Work>().HitPoint;
-                    aariHitPoint = aari.getComponent<Monster_Work>().HitPoint;
-
-                    //召喚獣ダメージ時カメラ振動
-                    if (oldEgiHitPoint > egiHitPoint || oldAarihitPoint > aariHitPoint)
-                    {                       
-                        CameraManager_Work.Instance.startCameraShack();
-                    }
+                    //召喚獣のHP管理とカメラ振動処理
+                    UpdateMonsterHitPoints();
 
                     //召喚獣のヒットポイントがなくなったら、勝敗設定とゲームオーバー処理を行う
-                    if (egiHitPoint <= 0 && aariHitPoint > 0)
-                    {
-                        winner = (int)Team.FrulaAndAari;
-
-                        setGameOver();
-
-                        loseMonster = egi;
-
-                    }
-                    else if (aariHitPoint <= 0 && egiHitPoint > 0)
-                    {
-                        winner = (int)Team.SheenaAndEgi;
-
-                        setGameOver();
-
-                        loseMonster = aari;
-                    }
-                    else if(egiHitPoint <= 0 && aariHitPoint <= 0)
-                    {
-                        winner = (int)Team.None;
-
-                        setGameOver();
-
-                        loseMonster = null;
-                    }
+                    CheckGameOverByHP();
 
                     //ゲーム時間が無くなったらゲームオーバー
-                    if (ingameTimer <= 0.0f && gameOver == false)
-                    {
-                        //ヒットポイントに応じて勝者判定を行う
-                        if (aariHitPoint > egiHitPoint)
-                        {
-                            winner = (int)Team.FrulaAndAari;
-                        }
-                        else if (egiHitPoint > aariHitPoint)
-                        {
-                            winner = (int)Team.SheenaAndEgi;
-                        }
-                        else
-                        {
-                            winner = (int)Team.None;
-                        }
-
-                        setGameOver();
-                    }
+                    CheckGameOverByTimeout();
 
                     //ゲームオーバーかBボタンでリザルトへ
                     if (gameOver)
                     {
-                        //時間切れの場合、終了演出
-                        if (ingameTimer <= 0.0f)
-                        {
-                            if (finishDirection == false)
-                            {
-                                //終了演出
-                                finishDirection = true;
-                                //終了SE
-                                soundPlayer._Sources[(int)InGameSe.Finigh].play();
-                            }
-                           
-                            finishDirectionWaitTimer += Application.ElapsedSecond;
-                        }
-                       
-                        gameOverTimer += Application.ElapsedSecond;
-
-                        //ゲームオーバー時、カメラ演出を行う　一定時間経過したら終了演出を出す
-                        if (gameOverTimer > ingameUserData.GameOverTime)
-                        {
-
-                            //終了演出時間加算
-                            finishDirectionWaitTimer += Application.ElapsedSecond;
-
-                            //終了演出
-                            if (finishDirection == false)
-                            {
-                                //終了演出
-                                finishDirection = true;
-                                //終了SE
-                                soundPlayer._Sources[(int)InGameSe.Finigh].play();
-                            }
-                        }
-                        else
-                        {
-                            //負けた召喚獣にカメラを寄せる
-                            if (loseMonster != null)
-                            {
-                                vec3 targetPosition = loseMonster.getComponent<Transform>().Position;
-                                targetPosition = targetPosition + ingameCameraUserData.TargetPositionOffset;
-                                CameraManager_Work.Instance.moveCameraLerp(targetPosition, ingameCameraUserData.ZoomInInterpolationCoef);
-                            }                     
-                        }
-
-                        //終了演出を出し、一定時間経過したらリザルトへ
-                        if (finishDirectionWaitTimer > ingameUserData.FinishTransitionTime)
-                        { 
-                            //シーン遷移時間加算
-                            resultTransitionTimer += Application.ElapsedSecond;
-
-                            if (resultTransitionTimer > ingameUserData.ResultTransitionTime)
-                            {
-                                //フェーズを進める
-                                inGamePhase = InGamePhase.GAME_OVER;
-                            }
-                        }
-   
+                        HandleGameOverSequence();
                         break;
                     }
 
