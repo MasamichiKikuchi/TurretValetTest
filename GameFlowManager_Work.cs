@@ -1,6 +1,12 @@
 ﻿//=============================================================================
 // <summary>
 // ゲームフローを管理するクラス
+// 
+// 主な役割:
+// - シーン遷移管理（タイトル、ストーリー、キャラクター選択、対戦前、インゲーム、リザルト）
+// - BGM・SE管理
+// - ポーズ機能
+// - ゲームオーバー判定
 // </summary>
 // <author> 菊池 雅道 </author>
 //=============================================================================
@@ -370,7 +376,7 @@ namespace app
 
         //ポーズを解除
         [Action]
-        private void cancelePause()
+        private void cancelPause()
         {
             //Pausableタグがついているゲームオブジェクト、フォルダの更新処理を有効化
             SceneManager.MainScene.setUpdate("Pausable", true);
@@ -382,78 +388,56 @@ namespace app
         //ポーズ選択肢
         private void PauseSelect()
         {
-            //選択肢
-            if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.EmuLleft) || GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.LLeft))
+            //左入力で選択肢を前に移動
+            if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.EmuLleft) || 
+                GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.LLeft))
             {
-                //選択肢を入力
-                selectInPause--;
-                if (selectInPause < 0)
+                if (selectInPause > 0)
                 {
-                    selectInPause = 0;
-                }
-                else
-                {
+                    selectInPause--;
+                    selectInPause = pauseOption[selectInPause];
                     soundPlayer._Sources[(int)PauseSe.CrursorMove].play();
                 }
-                selectInPause = titleOption[selectInPause];
-             
             }
-            else if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.EmuLright) || GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.LRight))
+            //右入力で選択肢を次に移動
+            else if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.EmuLright) || 
+                     GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.LRight))
             {
-                //選択肢を入力
-                int oldSelsect = selectInPause;
-                selectInPause++;
-                if (selectInPause >= Enum.GetValues(typeof(PauseOption)).Length)
+                int currentIndex = Array.IndexOf(pauseOption, selectInPause);
+                if (currentIndex < pauseOption.Length - 1)
                 {
-                    selectInPause = oldSelsect;
-                }
-                else
-                {
+                    selectInPause = pauseOption[currentIndex + 1];
                     soundPlayer._Sources[(int)PauseSe.CrursorMove].play();
                 }
-                selectInPause = titleOption[selectInPause];           
             }
 
-            //ボタンを押したら処理を行う
+            //決定ボタンで処理実行
             if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.RDown))
             {
                 //多重処理防止
-                if (pauseSelected == true)
+                if (pauseSelected)
                 {
                     return;
                 }
-                else 
-                { 
-                    pauseSelected = true;
-                }
-
-                //選択SE      
+                
+                pauseSelected = true;
                 soundPlayer._Sources[(int)PauseSe.Select].play();
 
                 //選択に応じて処理
                 switch (selectInPause)
                 {
                     case (int)PauseOption.Title:
-
-                        //タイトルへ移行
                         PauseTransitionTitle();
-                        
                         break;
 
                     case (int)PauseOption.Return:
-
-                        //ポーズ解除
-                        cancelePause();
-                       
+                        cancelPause();
                         break;
 
                     case (int)PauseOption.Exit:
-
-                        //ゲーム終了
                         via.Application.exit(0);
-
                         break;
-                }              
+                }
             }
         }
 
@@ -543,7 +527,7 @@ namespace app
                 if (nowFolder.Activating == false)
                 {
                     //ポーズ解除
-                    cancelePause();
+                    cancelPause();
 
                     //タイトルシーンへ
                     gameState = GameState.Title;
@@ -686,7 +670,7 @@ namespace app
                 }
                 else
                 {
-                    cancelePause();
+                    cancelPause();
                 }
             }
             //ポーズ画面選択肢
@@ -1178,7 +1162,7 @@ namespace app
                         }
                         else 
                         {
-                            cancelePause();
+                            cancelPause();
                         }
                     }
                     //ポーズ画面選択肢
@@ -1373,7 +1357,7 @@ namespace app
                         }
                         else
                         {
-                            cancelePause();
+                            cancelPause();
                         }
                     }
                     //ポーズ画面選択肢
@@ -1499,7 +1483,7 @@ namespace app
                         }
                         else
                         {
-                            cancelePause();
+                            cancelPause();
                         }
                     }
                     //ポーズ解除時音楽と動画の再生再開
@@ -1585,7 +1569,9 @@ namespace app
         [IgnoreDataMember, ReadOnly(true)]
         private InGamePhase inGamePhase = InGamePhase.ACTIVATE;
      
-        //Game Over状態にする
+        /// <summary>
+        /// Game Over状態にする
+        /// </summary>
         [Action]
         public void setGameOver()
         {
@@ -1595,7 +1581,9 @@ namespace app
             }
         }
 
-        //Game Over状態をリセット
+        /// <summary>
+        /// Game Over状態をリセット
+        /// </summary>
         public void resetGameOver()
         {
             if (gameOver == true)
