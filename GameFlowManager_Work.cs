@@ -1,6 +1,12 @@
 ﻿//=============================================================================
 // <summary>
 // ゲームフローを管理するクラス
+// 
+// 主な役割:
+// - シーン遷移管理（タイトル、ストーリー、キャラクター選択、対戦前、インゲーム、リザルト）
+// - BGM・SE管理
+// - ポーズ機能
+// - ゲームオーバー判定
 // </summary>
 // <author> 菊池 雅道 </author>
 //=============================================================================
@@ -24,7 +30,7 @@ namespace app
         /// <summary>
         /// コンポーネント
         /// </summary>  
-        private SoundPlayer cpSoundPlayer = null; //サウンドプレイヤーコンポーネント
+        private SoundPlayer soundPlayer = null; //サウンドプレイヤーコンポーネント
         #endregion
 
         #region フィールド
@@ -370,7 +376,7 @@ namespace app
 
         //ポーズを解除
         [Action]
-        private void cancelePause()
+        private void cancelPause()
         {
             //Pausableタグがついているゲームオブジェクト、フォルダの更新処理を有効化
             SceneManager.MainScene.setUpdate("Pausable", true);
@@ -382,78 +388,56 @@ namespace app
         //ポーズ選択肢
         private void PauseSelect()
         {
-            //選択肢
-            if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.EmuLleft) || GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.LLeft))
+            //左入力で選択肢を前に移動
+            if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.EmuLleft) || 
+                GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.LLeft))
             {
-                //選択肢を入力
-                selectInPause--;
-                if (selectInPause < 0)
+                if (selectInPause > 0)
                 {
-                    selectInPause = 0;
+                    selectInPause--;
+                    selectInPause = pauseOption[selectInPause];
+                    soundPlayer._Sources[(int)PauseSe.CrursorMove].play();
                 }
-                else
-                {
-                    cpSoundPlayer._Sources[(int)PauseSe.CrursorMove].play();
-                }
-                selectInPause = titleOption[selectInPause];
-             
             }
-            else if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.EmuLright) || GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.LRight))
+            //右入力で選択肢を次に移動
+            else if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.EmuLright) || 
+                     GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.LRight))
             {
-                //選択肢を入力
-                int oldSelsect = selectInPause;
-                selectInPause++;
-                if (selectInPause >= Enum.GetValues(typeof(PauseOption)).Length)
+                int currentIndex = Array.IndexOf(pauseOption, selectInPause);
+                if (currentIndex < pauseOption.Length - 1)
                 {
-                    selectInPause = oldSelsect;
+                    selectInPause = pauseOption[currentIndex + 1];
+                    soundPlayer._Sources[(int)PauseSe.CrursorMove].play();
                 }
-                else
-                {
-                    cpSoundPlayer._Sources[(int)PauseSe.CrursorMove].play();
-                }
-                selectInPause = titleOption[selectInPause];           
             }
 
-            //ボタンを押したら処理を行う
+            //決定ボタンで処理実行
             if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.RDown))
             {
                 //多重処理防止
-                if (pauseSelected == true)
+                if (pauseSelected)
                 {
                     return;
                 }
-                else 
-                { 
-                    pauseSelected = true;
-                }
-
-                //選択SE      
-                cpSoundPlayer._Sources[(int)PauseSe.Select].play();
+                
+                pauseSelected = true;
+                soundPlayer._Sources[(int)PauseSe.Select].play();
 
                 //選択に応じて処理
                 switch (selectInPause)
                 {
                     case (int)PauseOption.Title:
-
-                        //タイトルへ移行
                         PauseTransitionTitle();
-                        
                         break;
 
                     case (int)PauseOption.Return:
-
-                        //ポーズ解除
-                        cancelePause();
-                       
+                        cancelPause();
                         break;
 
                     case (int)PauseOption.Exit:
-
-                        //ゲーム終了
                         via.Application.exit(0);
-
                         break;
-                }              
+                }
             }
         }
 
@@ -475,11 +459,7 @@ namespace app
                     storyFolder.deactivate();
 
                     //BGM終了
-                    if (playBgm)
-                    {
-                        cpSoundPlayer._Sources[(int)Bgm.Story].stop();
-                        playBgm = false;
-                    }
+                    StopBgm(Bgm.Story);
 
                     //ロード画像を表示
                     load_GUIController.NoAnimation();
@@ -495,11 +475,7 @@ namespace app
                     selectFolder.deactivate();
 
                     //BGM終了
-                    if (playBgm)
-                    {
-                        cpSoundPlayer._Sources[(int)Bgm.Select].stop();
-                        playBgm = false;
-                    }
+                    StopBgm(Bgm.Select);
 
                     //ロード画像を表示
                     load_GUIController.NoAnimation();
@@ -515,11 +491,7 @@ namespace app
                     preGameFolder.deactivate();
 
                     //BGM終了
-                    if (playBgm)
-                    {
-                        cpSoundPlayer._Sources[(int)Bgm.PreGame].stop();
-                        playBgm = false;
-                    }
+                    StopBgm(Bgm.PreGame);
 
                     //ロード画像を表示
                     load_GUIController.NoAnimation();
@@ -535,11 +507,7 @@ namespace app
                     inGameLocationFolder.deactivate();
 
                     //BGM終了
-                    if (playBgm)
-                    {
-                        cpSoundPlayer._Sources[(int)Bgm.InGame].stop();
-                        playBgm = false;
-                    }
+                    StopBgm(Bgm.InGame);
 
                     //ロード画像を表示
                     load_GUIController.NoAnimation();
@@ -559,7 +527,7 @@ namespace app
                 if (nowFolder.Activating == false)
                 {
                     //ポーズ解除
-                    cancelePause();
+                    cancelPause();
 
                     //タイトルシーンへ
                     gameState = GameState.Title;
@@ -570,12 +538,283 @@ namespace app
 
         #endregion
 
+        #region BGM・SE管理ヘルパーメソッド
+        /// <summary>
+        /// BGMを再生する
+        /// </summary>
+        private void PlayBgm(Bgm bgm, bool loop = true)
+        {
+            if (!playBgm)
+            {
+                playBgm = true;
+                soundPlayer._Sources[(int)bgm].play();
+                soundPlayer._Sources[(int)bgm].Loop = loop;
+            }
+        }
+
+        /// <summary>
+        /// BGMを停止する
+        /// </summary>
+        private void StopBgm(Bgm bgm)
+        {
+            if (playBgm)
+            {
+                soundPlayer._Sources[(int)bgm].stop();
+                playBgm = false;
+            }
+        }
+
+        /// <summary>
+        /// ロード画像を表示する（アニメーションなし）
+        /// </summary>
+        private void ShowLoadingScreen()
+        {
+            load_GUIController.NoAnimation();
+            loadGUI.Enabled = true;
+        }
+
+        /// <summary>
+        /// ロード画像を表示する（アニメーションあり）
+        /// </summary>
+        private void ShowLoadingScreenWithAnimation()
+        {
+            load_GUIController.Animation();
+            loadGUI.Enabled = true;
+        }
+
+        /// <summary>
+        /// ロード画像を非表示にする
+        /// </summary>
+        private void HideLoadingScreen()
+        {
+            loadGUI.Enabled = false;
+        }
+
+        /// <summary>
+        /// フォルダの非アクティブ化を待つ
+        /// </summary>
+        private bool IsFolderDeactivated(Folder folder)
+        {
+            return folder != null && folder.Activating == false;
+        }
+
+        /// <summary>
+        /// フォルダのアクティブ化を待つ
+        /// </summary>
+        private bool IsFolderActivated(Folder folder)
+        {
+            return folder != null && folder.Activating == false && folder.Active;
+        }
+        #endregion
+
+        #region インゲームヘルパーメソッド
+        /// <summary>
+        /// ゲーム開始演出処理
+        /// </summary>
+        private void HandleGameStartSequence()
+        {
+            float oldStartTimer = gameStartTimer;
+
+            //ゲーム開始演出のタイマーが０の時、SEを鳴らす
+            if (Math.Truncate(gameStartTimer) == 0 && gameStartTimer % 1.0f == 0)
+            {
+                //準備SE
+                soundPlayer._Sources[(int)InGameSe.Ready].play();
+            }
+
+            //ゲーム開始演出のタイマーを進める
+            if (!gameOver)
+            {
+                gameStartTimer += Application.ElapsedSecond;
+            }
+
+            //経過時間に応じて開始演出を進める
+            if (gameStartTimer < ingameUserData.StartTransitionTime)
+            {
+                if (Math.Truncate(gameStartTimer) == Math.Truncate(ingameUserData.StartGoTime) &&
+                    Math.Truncate(gameStartTimer) != Math.Truncate(oldStartTimer))
+                {
+                    //開始SE
+                    soundPlayer._Sources[(int)InGameSe.Go].play();
+                }
+            }
+            else if (Math.Truncate(gameStartTimer) == Math.Truncate(ingameUserData.StartTransitionTime) &&
+                     Math.Truncate(gameStartTimer) != Math.Truncate(oldStartTimer))
+            {
+                //入力を受け付ける
+                GamePlayerManager_Work.Instance.IsInput = true;
+
+                //ゲーム開始フラグ有効
+                gameStart = true;
+
+                //BGM再生
+                PlayBgm(Bgm.InGame);
+            }
+            else
+            {
+                //開始演出が終了したら、ポーズ可能になる
+                HandlePauseInput();
+            }
+        }
+
+        /// <summary>
+        /// ポーズ入力処理
+        /// </summary>
+        private void HandlePauseInput()
+        {
+            if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.CRight))
+            {
+                if (!pause)
+                {
+                    setPause();
+                }
+                else
+                {
+                    cancelPause();
+                }
+            }
+            //ポーズ画面選択肢
+            if (pause)
+            {
+                PauseSelect();
+            }
+        }
+
+        /// <summary>
+        /// 召喚獣のHP管理とカメラ振動処理
+        /// </summary>
+        private void UpdateMonsterHitPoints()
+        {
+            //召喚獣のヒットポイントを取得
+            int oldEgiHitPoint = egiHitPoint;
+            int oldAarihitPoint = aariHitPoint;
+
+            //召喚獣のヒットポイントを取得
+            egiHitPoint = egi.getComponent<Monster_Work>().HitPoint;
+            aariHitPoint = aari.getComponent<Monster_Work>().HitPoint;
+
+            //召喚獣ダメージ時カメラ振動
+            if (oldEgiHitPoint > egiHitPoint || oldAarihitPoint > aariHitPoint)
+            {
+                CameraManager_Work.Instance.startCameraShack();
+            }
+        }
+
+        /// <summary>
+        /// 勝敗判定（HP基準）
+        /// </summary>
+        private void CheckGameOverByHP()
+        {
+            if (egiHitPoint <= 0 && aariHitPoint > 0)
+            {
+                winner = (int)Team.FrulaAndAari;
+                setGameOver();
+                loseMonster = egi;
+            }
+            else if (aariHitPoint <= 0 && egiHitPoint > 0)
+            {
+                winner = (int)Team.SheenaAndEgi;
+                setGameOver();
+                loseMonster = aari;
+            }
+            else if (egiHitPoint <= 0 && aariHitPoint <= 0)
+            {
+                winner = (int)Team.None;
+                setGameOver();
+                loseMonster = null;
+            }
+        }
+
+        /// <summary>
+        /// 勝敗判定（時間切れ）
+        /// </summary>
+        private void CheckGameOverByTimeout()
+        {
+            if (ingameTimer <= 0.0f && gameOver == false)
+            {
+                //ヒットポイントに応じて勝者判定を行う
+                if (aariHitPoint > egiHitPoint)
+                {
+                    winner = (int)Team.FrulaAndAari;
+                }
+                else if (egiHitPoint > aariHitPoint)
+                {
+                    winner = (int)Team.SheenaAndEgi;
+                }
+                else
+                {
+                    winner = (int)Team.None;
+                }
+
+                setGameOver();
+            }
+        }
+
+        /// <summary>
+        /// 終了演出を開始
+        /// </summary>
+        private void StartFinishDirection()
+        {
+            if (finishDirection == false)
+            {
+                finishDirection = true;
+                soundPlayer._Sources[(int)InGameSe.Finigh].play();
+            }
+        }
+
+        /// <summary>
+        /// ゲームオーバー演出処理
+        /// </summary>
+        private void HandleGameOverSequence()
+        {
+            //時間切れの場合、終了演出
+            if (ingameTimer <= 0.0f)
+            {
+                StartFinishDirection();
+                finishDirectionWaitTimer += Application.ElapsedSecond;
+            }
+
+            gameOverTimer += Application.ElapsedSecond;
+
+            //ゲームオーバー時、カメラ演出を行う　一定時間経過したら終了演出を出す
+            if (gameOverTimer > ingameUserData.GameOverTime)
+            {
+                //終了演出時間加算
+                finishDirectionWaitTimer += Application.ElapsedSecond;
+                StartFinishDirection();
+            }
+            else
+            {
+                //負けた召喚獣にカメラを寄せる
+                if (loseMonster != null)
+                {
+                    vec3 targetPosition = loseMonster.getComponent<Transform>().Position;
+                    targetPosition = targetPosition + ingameCameraUserData.TargetPositionOffset;
+                    CameraManager_Work.Instance.moveCameraLerp(targetPosition, ingameCameraUserData.ZoomInInterpolationCoef);
+                }
+            }
+
+            //終了演出を出し、一定時間経過したらリザルトへ
+            if (finishDirectionWaitTimer > ingameUserData.FinishTransitionTime)
+            {
+                //シーン遷移時間加算
+                resultTransitionTimer += Application.ElapsedSecond;
+
+                if (resultTransitionTimer > ingameUserData.ResultTransitionTime)
+                {
+                    //フェーズを進める
+                    inGamePhase = InGamePhase.GAME_OVER;
+                }
+            }
+        }
+        #endregion
+
         public override void start()
         {
             base.start();
 
             //サウンドプレイヤー
-            cpSoundPlayer = GameObject.getComponent<SoundPlayer>();
+            soundPlayer = GameObject.getComponent<SoundPlayer>();
 
             //各シーンのフォルダを取得
             titleFolder = SceneManager.CurrentScene.findFolder(titleFolderPath);
@@ -588,7 +827,7 @@ namespace app
             //ロード画像のコンポーネントを取得
             loadGUI = SceneManager.MainScene.findGameObject("LoadGUI").getComponent<GUI>();
             load_GUIController = SceneManager.MainScene.findGameObject("LoadGUI").getComponent<Load_GUIController>();
-            loadGUI.Enabled = false;
+            HideLoadingScreen();
 
             //ポーズGUIのコンポーネントを取得
             pauseGUI = SceneManager.MainScene.findGameObject("PauseGUI").getComponent<GUI>();
@@ -687,7 +926,7 @@ namespace app
                     if (titleFolder.Activating == false)
                     {
                         //ロード画像を非表示
-                        loadGUI.Enabled = false;
+                        HideLoadingScreen();
 
                         if (titleFolder.Active)
                         {
@@ -701,12 +940,7 @@ namespace app
                 case TitlePhase.TITLE:
 
                     //BGM再生
-                    if (!playBgm)
-                    {
-                        playBgm = true;
-                        cpSoundPlayer._Sources[(int)Bgm.Title].play();
-                        cpSoundPlayer._Sources[(int)Bgm.Title].Loop = true;
-                    }
+                    PlayBgm(Bgm.Title);
 
                     //SEが鳴り終わったら、次のシーンへ遷移する
                     if (titleTransition)
@@ -714,11 +948,7 @@ namespace app
                         if (titleTransitionTimer >= titleUserData.TilteTranslateTime)
                         {
                             //BGM終了
-                            if (playBgm)
-                            {
-                                cpSoundPlayer._Sources[(int)Bgm.Title].stop();
-                                playBgm = false;
-                            }
+                            StopBgm(Bgm.Title);
 
                             //タイトルフォルダ非アクティブ
                             titleFolder.deactivate();
@@ -756,7 +986,7 @@ namespace app
                         else
                         {
                             //SE
-                            cpSoundPlayer._Sources[(int)TitleSe.CrursorMove].play();
+                            soundPlayer._Sources[(int)TitleSe.CrursorMove].play();
                         }
                         selectInTitle = titleOption[selectInTitle];
                     }
@@ -772,7 +1002,7 @@ namespace app
                         else
                         {
                             //SE
-                            cpSoundPlayer._Sources[(int)TitleSe.CrursorMove].play();
+                            soundPlayer._Sources[(int)TitleSe.CrursorMove].play();
                         }
                         selectInTitle = titleOption[selectInTitle];
                     }
@@ -789,7 +1019,7 @@ namespace app
                     if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.RDown))
                     {
                         //SE
-                        cpSoundPlayer._Sources[(int)TitleSe.TitleSelect].play();
+                        soundPlayer._Sources[(int)TitleSe.TitleSelect].play();
 
                         //シーン遷移フラグ設定
                         titleTransition = true;
@@ -910,7 +1140,7 @@ namespace app
                         if (storyFolder.Active)
                         {
                             //ロード画像を非表示
-                            loadGUI.Enabled = false;
+                            HideLoadingScreen();
                             //フェーズを進める
                             storyPhase = StoryPhase.STORY;
                         }
@@ -921,12 +1151,7 @@ namespace app
                 case StoryPhase.STORY:
 
                     //BGM再生
-                    if (!playBgm)
-                    {
-                        playBgm = true;
-                        cpSoundPlayer._Sources[(int)Bgm.Story].play();
-                        cpSoundPlayer._Sources[(int)Bgm.Story].Loop = true;
-                    }
+                    PlayBgm(Bgm.Story);
 
                     //ポーズ
                     if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.CRight))
@@ -937,7 +1162,7 @@ namespace app
                         }
                         else 
                         {
-                            cancelePause();
+                            cancelPause();
                         }
                     }
                     //ポーズ画面選択肢
@@ -951,11 +1176,7 @@ namespace app
                     if (nextstep)
                     {
                         //BGM終了
-                        if (playBgm)
-                        {
-                            cpSoundPlayer._Sources[(int)Bgm.Story].stop();
-                            playBgm = false;
-                        }
+                        StopBgm(Bgm.Story);
                         //ストーリーフォルダ非アクティブ
                         storyFolder.deactivate();
                         //ロード画像を表示
@@ -1047,7 +1268,7 @@ namespace app
                         if (selectFolder.Active)
                         {
                             //ロード画像を非表示
-                            loadGUI.Enabled = false;
+                            HideLoadingScreen();
                             //フェーズを進める
                             selectPhase = SelectPhase.SELECT;
 
@@ -1060,12 +1281,7 @@ namespace app
                 case SelectPhase.SELECT:
                     
                     //BGM再生
-                    if (!playBgm)
-                    {
-                        playBgm = true;
-                        cpSoundPlayer._Sources[(int)Bgm.Select].play();
-                        cpSoundPlayer._Sources[(int)Bgm.Select].Loop = true;
-                    }          
+                    PlayBgm(Bgm.Select);          
 
                     //各プレイヤーの選択状況
                     bool[] nowDecide = new bool[]
@@ -1085,19 +1301,19 @@ namespace app
                         if (nowSelect[i] != preSelect[i])
                         {
                             //キャラクター選択SE再生
-                            cpSoundPlayer._Sources[(int)SelectSe.CrursorMove].play();
+                            soundPlayer._Sources[(int)SelectSe.CrursorMove].play();
                         }
                         
                         if (nowDecide[i] && !preDecide[i])
                         {
                             //キャラクター選択決定SE再生
-                            cpSoundPlayer._Sources[(int)SelectSe.Select].play();
+                            soundPlayer._Sources[(int)SelectSe.Select].play();
                         }
 
                         if (!nowDecide[i] && preDecide[i])
                         {
                             //キャラクター選択解除SE再生
-                            cpSoundPlayer._Sources[(int)SelectSe.Cancele].play();
+                            soundPlayer._Sources[(int)SelectSe.Cancele].play();
                         }
                     }
 
@@ -1141,7 +1357,7 @@ namespace app
                         }
                         else
                         {
-                            cancelePause();
+                            cancelPause();
                         }
                     }
                     //ポーズ画面選択肢
@@ -1158,11 +1374,7 @@ namespace app
                     if (selectFolder.Activating == false)
                     {
                         //BGM終了
-                        if (playBgm)
-                        {
-                            cpSoundPlayer._Sources[(int)Bgm.Select].stop();
-                            playBgm = false;
-                        }
+                        StopBgm(Bgm.Select);
 
                         //フェーズを進める
                         selectPhase = SelectPhase.EXIT;
@@ -1266,19 +1478,19 @@ namespace app
                         if (!pause)
                         {
                             preGameMovie.pause();
-                            cpSoundPlayer._Sources[(int)Bgm.PreGame].pause();
+                            soundPlayer._Sources[(int)Bgm.PreGame].pause();
                             setPause();
                         }
                         else
                         {
-                            cancelePause();
+                            cancelPause();
                         }
                     }
                     //ポーズ解除時音楽と動画の再生再開
                     if (preGameMovie.State == via.movie.Movie.CosmeticState.Paused && !pause)
                     {
                         preGameMovie.play();
-                        cpSoundPlayer._Sources[(int)Bgm.PreGame].play();
+                        soundPlayer._Sources[(int)Bgm.PreGame].play();
                     }
                     //ポーズ画面選択肢
                     if (pause)
@@ -1290,13 +1502,9 @@ namespace app
                     if (preGameMovie.State == via.movie.Movie.CosmeticState.Ready && preGameMovie.State != via.movie.Movie.CosmeticState.Preparing)
                     {
                         //ロード画像を非表示
-                        loadGUI.Enabled = false;
+                        HideLoadingScreen();
                         //BGM再生
-                        if (!playBgm)
-                        {
-                            playBgm = true;
-                            cpSoundPlayer._Sources[(int)Bgm.PreGame].play();
-                        }
+                        PlayBgm(Bgm.PreGame, false);
                         preGameMovie.play();
                     }
                     else if (preGameMovie.State == via.movie.Movie.CosmeticState.Finished)
@@ -1321,11 +1529,7 @@ namespace app
                     if (preGameFolder.Activating == false)
                     {
                         //BGM終了
-                        if (playBgm)
-                        {
-                            cpSoundPlayer._Sources[(int)Bgm.PreGame].stop();
-                            playBgm = false;
-                        }
+                        StopBgm(Bgm.PreGame);
                         //フェーズを進める
                         preGamePhase = PreGamePhase.EXIT;
                     }
@@ -1365,7 +1569,9 @@ namespace app
         [IgnoreDataMember, ReadOnly(true)]
         private InGamePhase inGamePhase = InGamePhase.ACTIVATE;
      
-        //Game Over状態にする
+        /// <summary>
+        /// Game Over状態にする
+        /// </summary>
         [Action]
         public void setGameOver()
         {
@@ -1375,7 +1581,9 @@ namespace app
             }
         }
 
-        //Game Over状態をリセット
+        /// <summary>
+        /// Game Over状態をリセット
+        /// </summary>
         public void resetGameOver()
         {
             if (gameOver == true)
@@ -1451,7 +1659,7 @@ namespace app
                     if (inGameLocationFolder.Activating == false)
                     {
                         //ロード画像を非表示
-                        loadGUI.Enabled = false;
+                        HideLoadingScreen();
 
                         //プレイヤーのゲームオブジェクトを取得
                         sheena = SceneManager.MainScene.findGameObject("Sheena");
@@ -1466,195 +1674,28 @@ namespace app
                 //インゲーム
                 case InGamePhase.INGAME:
 
-                    float oldStartTimer = gameStartTimer;
+                    //ゲーム開始演出処理
+                    HandleGameStartSequence();
 
-                    //ゲーム開始演出のタイマーが０の時、SEを鳴らす
-                    if (Math.Truncate(gameStartTimer) == 0 && gameStartTimer % 1.0f== 0)
-                    {
-                        //準備SE
-                        cpSoundPlayer._Sources[(int)InGameSe.Ready].play();
-                    }
-
-                    //ゲーム開始演出のタイマーを進める
-                    if (!gameOver)
-                    {
-                        gameStartTimer += Application.ElapsedSecond;
-                    }
-
-                    //経過時間に応じて開始演出を進める
-                    if (gameStartTimer < ingameUserData.StartTransitionTime)
-                    {                           
-                        if (Math.Truncate(gameStartTimer) == Math.Truncate(ingameUserData.StartGoTime) && Math.Truncate(gameStartTimer) != Math.Truncate(oldStartTimer))
-                        {
-                            //開始SE
-                            cpSoundPlayer._Sources[(int)InGameSe.Go].play();
-                        }
-                    }
-                    else if (Math.Truncate(gameStartTimer) == Math.Truncate(ingameUserData.StartTransitionTime) && Math.Truncate(gameStartTimer) != Math.Truncate(oldStartTimer))
-                    {                     
-                        //入力を受け付ける
-                        GamePlayerManager_Work.Instance.IsInput = true;
-
-                        //ゲーム開始フラグ有効
-                        gameStart = true;
-
-                        //BGM再生
-                        if (!playBgm)
-                        {
-                            playBgm = true;
-                            cpSoundPlayer._Sources[(int)Bgm.InGame].play();
-                            cpSoundPlayer._Sources[(int)Bgm.InGame].Loop = true;
-                        }
-                    }
-                    else 
-                    {
-                        //開始演出が終了したら、ポーズ可能になる
-                        //ポーズ
-                        if (GamePlayerManager_Work.Instance.isAnyPlayerButton(GamePadButton.CRight))
-                        {
-                            if (!pause)
-                            {
-                                setPause();
-                            }
-                            else
-                            {
-                                cancelePause();
-                            }
-                        }
-                        //ポーズ画面選択肢
-                        if (pause)
-                        {
-                            PauseSelect();
-                        }
-                    }
-
-                    float oldGameTimer = ingameTimer;
                     //ゲーム時間のカウントダウン
-                    if (pause == false && gameOver == false　&& gameStart)
+                    if (pause == false && gameOver == false && gameStart)
                     {
                         ingameTimer -= Application.ElapsedSecond;
                     }
 
-                    //召喚獣のヒットポイントを取得
-                    int oldEgiHitPoint = egiHitPoint;
-                    int oldAarihitPoint = aariHitPoint;
-
-                    //召喚獣のヒットポイントを取得
-                    egiHitPoint = egi.getComponent<Monster_Work>().HitPoint;
-                    aariHitPoint = aari.getComponent<Monster_Work>().HitPoint;
-
-                    //召喚獣ダメージ時カメラ振動
-                    if (oldEgiHitPoint > egiHitPoint || oldAarihitPoint > aariHitPoint)
-                    {                       
-                        CameraManager_Work.Instance.startCameraShack();
-                    }
+                    //召喚獣のHP管理とカメラ振動処理
+                    UpdateMonsterHitPoints();
 
                     //召喚獣のヒットポイントがなくなったら、勝敗設定とゲームオーバー処理を行う
-                    if (egiHitPoint <= 0 && aariHitPoint > 0)
-                    {
-                        winner = (int)Team.FrulaAndAari;
-
-                        setGameOver();
-
-                        loseMonster = egi;
-
-                    }
-                    else if (aariHitPoint <= 0 && egiHitPoint > 0)
-                    {
-                        winner = (int)Team.SheenaAndEgi;
-
-                        setGameOver();
-
-                        loseMonster = aari;
-                    }
-                    else if(egiHitPoint <= 0 && aariHitPoint <= 0)
-                    {
-                        winner = (int)Team.None;
-
-                        setGameOver();
-
-                        loseMonster = null;
-                    }
+                    CheckGameOverByHP();
 
                     //ゲーム時間が無くなったらゲームオーバー
-                    if (ingameTimer <= 0.0f && gameOver == false)
-                    {
-                        //ヒットポイントに応じて勝者判定を行う
-                        if (aariHitPoint > egiHitPoint)
-                        {
-                            winner = (int)Team.FrulaAndAari;
-                        }
-                        else if (egiHitPoint > aariHitPoint)
-                        {
-                            winner = (int)Team.SheenaAndEgi;
-                        }
-                        else
-                        {
-                            winner = (int)Team.None;
-                        }
-
-                        setGameOver();
-                    }
+                    CheckGameOverByTimeout();
 
                     //ゲームオーバーかBボタンでリザルトへ
                     if (gameOver)
                     {
-                        //時間切れの場合、終了演出
-                        if (ingameTimer <= 0.0f)
-                        {
-                            if (finishDirection == false)
-                            {
-                                //終了演出
-                                finishDirection = true;
-                                //終了SE
-                                cpSoundPlayer._Sources[(int)InGameSe.Finigh].play();
-                            }
-                           
-                            finishDirectionWaitTimer += Application.ElapsedSecond;
-                        }
-                       
-                        gameOverTimer += Application.ElapsedSecond;
-
-                        //ゲームオーバー時、カメラ演出を行う　一定時間経過したら終了演出を出す
-                        if (gameOverTimer > ingameUserData.GameOverTime)
-                        {
-
-                            //終了演出時間加算
-                            finishDirectionWaitTimer += Application.ElapsedSecond;
-
-                            //終了演出
-                            if (finishDirection == false)
-                            {
-                                //終了演出
-                                finishDirection = true;
-                                //終了SE
-                                cpSoundPlayer._Sources[(int)InGameSe.Finigh].play();
-                            }
-                        }
-                        else
-                        {
-                            //負けた召喚獣にカメラを寄せる
-                            if (loseMonster != null)
-                            {
-                                vec3 targetPosition = loseMonster.getComponent<Transform>().Position;
-                                targetPosition = targetPosition + ingameCameraUserData.TargetPositionOffset;
-                                CameraManager_Work.Instance.moveCameraLerp(targetPosition, ingameCameraUserData.ZoomInInterpolationCoef);
-                            }                     
-                        }
-
-                        //終了演出を出し、一定時間経過したらリザルトへ
-                        if (finishDirectionWaitTimer > ingameUserData.FinishTransitionTime)
-                        { 
-                            //シーン遷移時間加算
-                            resultTransitionTimer += Application.ElapsedSecond;
-
-                            if (resultTransitionTimer > ingameUserData.ResultTransitionTime)
-                            {
-                                //フェーズを進める
-                                inGamePhase = InGamePhase.GAME_OVER;
-                            }
-                        }
-   
+                        HandleGameOverSequence();
                         break;
                     }
 
@@ -1685,11 +1726,7 @@ namespace app
                         SceneManager.MainScene.setUpdate("Pausable", true);
 
                         //BGM終了
-                        if (playBgm)
-                        {
-                            cpSoundPlayer._Sources[(int)Bgm.InGame].stop();
-                            playBgm = false;
-                        }
+                        StopBgm(Bgm.InGame);
 
                         //フェーズを進める
                         inGamePhase = InGamePhase.EXIT;
@@ -1743,7 +1780,7 @@ namespace app
                 }
                 else
                 {
-                    cpSoundPlayer._Sources[(int)ResultSe.CrursorMove].play();
+                    soundPlayer._Sources[(int)ResultSe.CrursorMove].play();
                 }
                 selectInResult = resultOption[selectInResult];
             }
@@ -1758,7 +1795,7 @@ namespace app
                 }
                 else
                 {
-                    cpSoundPlayer._Sources[(int)ResultSe.CrursorMove].play();
+                    soundPlayer._Sources[(int)ResultSe.CrursorMove].play();
                 }
                 selectInResult = resultOption[selectInResult];
             }
@@ -1777,16 +1814,12 @@ namespace app
                 }
 
                 //選択SE      
-                cpSoundPlayer._Sources[(int)ResultSe.Select].play();
+                soundPlayer._Sources[(int)ResultSe.Select].play();
 
                 //BGM終了
-                if (playBgm)
-                {
-                    cpSoundPlayer._Sources[(int)Bgm.Result].stop();
-                    playBgm = false;
-                }
+                StopBgm(Bgm.Result);
                 //ジングル終了
-                cpSoundPlayer._Sources[(int)ResultSe.Jingle].stop();
+                soundPlayer._Sources[(int)ResultSe.Jingle].stop();
                 //選択に応じて処理
                 switch (selectInResult)
                 {
@@ -1901,7 +1934,7 @@ namespace app
                             if (ResultMovie.State == via.movie.Movie.CosmeticState.Ready)
                             {
                                 //ロード画像を非表示
-                                loadGUI.Enabled = false;
+                                HideLoadingScreen();
                                 resultPhase = ResultPhase.RESULT;
                             }
 
@@ -1920,16 +1953,14 @@ namespace app
                         ResultMovie.play();
                         if(winner != (int)Team.None)
                         {
-                            cpSoundPlayer._Sources[(int)ResultSe.Jingle].play();
+                            soundPlayer._Sources[(int)ResultSe.Jingle].play();
                         }
                     }
 
                     //BGM再生
                     if ((ResultMovie.State == via.movie.Movie.CosmeticState.Finished || winner == (int)Team.None) && !playBgm)
                     {
-                        playBgm = true;
-                        cpSoundPlayer._Sources[(int)Bgm.Result].play();
-                        cpSoundPlayer._Sources[(int)Bgm.Result].Loop = true;
+                        PlayBgm(Bgm.Result);
                     }
 
                     if (ResultMovie.State == via.movie.Movie.CosmeticState.Finished || resultSkip)
